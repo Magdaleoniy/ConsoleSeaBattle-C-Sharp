@@ -163,6 +163,10 @@ namespace SeaBattle
                                 enemy.clone.printMap();
                             }                       
                         }
+
+                        if (end)
+                            break;
+
                         Console.WriteLine("\n" + "Вы промахнулись" + "\n");
                         int step = 1;
                         //Этот цикл для выстрелов компьютера
@@ -257,7 +261,7 @@ namespace SeaBattle
             if (space == -1)
                 x = Convert.ToInt32(s.Substring(1));
             else
-                x = Convert.ToInt32(s.Substring(1, s.IndexOf(" ") - 1));
+                x = Convert.ToInt32(s[1..s.IndexOf(" ")]);
             if (x > 10 || y > 10)
                 throw new Exception();
             List<int> result = new List<int>();
