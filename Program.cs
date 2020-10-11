@@ -2,6 +2,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Diagnostics;
 using System.Drawing;
 using System.IO;
@@ -11,10 +12,13 @@ using System.Xml.Schema;
 
 
 // Проект Степанова Юрия Сергеевича
-// Версия проекта: 0.0.2
+// Версия проекта: 0.0.3
 
-// В этой версии программа умеет генерировать карты и вести консольную игру.
-// Пользователь может сразиться с легким ботом, который поражает поля случайным образом.
+// В этой версии использованы конструкции:
+// Абстракных классов и методов (см. Game.Bot), виртуальных методов (Game.EasyBot),
+// наследования (EasyBot и MediumBot), переопределения и интерфейсов (IShuffle)
+// Добавлен бот средней сложности (находится в разработке), который умеет поражать
+// клетки рядом с подбитой пабулой, чтобы добивать корабль после попадания
 
 namespace SeaBattle
 {
@@ -39,13 +43,13 @@ namespace SeaBattle
                 {
                     Game session = new Game(my);
                     session.createMap();
-                }         
+                }
                 else if (s.Equals("clean"))
                 {
                     my.InitializeMap();
                     my.printMap();
                     Console.WriteLine();
-                }                   
+                }
                 else if (s.Equals("print"))
                     my.printMap();
                 else if (s.Equals("end"))
@@ -56,21 +60,206 @@ namespace SeaBattle
 
             }
 
-            
-        }       
+
+        }
         public class Game
         {
             public Map my;
-            public Map enemy = new Map();
             public Game(Map my)
             {
                 this.my = my;
             }
 
+            //Интерфейс, реализующий метод случайного перемешивания списка
+            public interface IShuffle
+            {
+                void shuffle(List<int> x);
+            }
+
+            //Базовый класс для компьютеров-противников
+            public abstract class Bot
+            {
+                protected int step = 1;
+                public Map bot = new Map(), enemy;
+                //Все боты обязательно должны вести огонь, но по-разному
+                //Для этого используем абстрактный метод в базовом классе,
+                //который переопределим у каждого бота 
+                public abstract void shoot();
+                public void initializeMap()
+                {
+                    bot.InitializeMap();
+                    bot.InitializeClone();
+                    enemy.InitializeClone();
+                    bot.createRandomMap();
+                }
+            }
+
+            //Бот легкой сложности, который поражает поля случайным образом
+            class EasyBot : Bot
+            {
+                public string type;
+                public EasyBot(Map enemy)
+                {
+                    this.enemy = enemy;
+                    initializeMap();
+                }
+                public EasyBot(Map enemy, string type)
+                {
+                    this.enemy = enemy;
+                    this.type = type;
+                    initializeMap();
+                    present();
+                }
+
+                //Обязательное переопределение абстрактного метода
+                public override void shoot()
+                {
+                    //Этот цикл для выстрелов компьютера
+                    while (true)
+                    {
+                        Console.WriteLine(step + "-ый ход компьютера");
+                        Random r = new Random();
+                        int x = r.Next(9) + 1;
+                        int y = r.Next(9) + 1;
+                        if (bot.annihilation(enemy, x, y) == false)
+                            break;
+                        step++;
+                    }
+                }
+
+                //Виртуальный метод, который предсавляет бота пользователю
+                public virtual void present()
+                {
+                    Console.WriteLine("\n" + "Приветствую, я " + type + " противник. Приятной игры" + "\n");
+                }
+
+            }
+
+            //Клас MdediumBot расширяет класс EasyBot и реализует интерфейс IShuffle
+            class MediumBot : EasyBot, IShuffle
+            {
+                bool action = false;
+                int x = -1, y = -1;
+                List<int> forShoot = new List<int>();
+                Random r = new Random();
+
+                //Конструктор, который обращается к конструктору родителя
+                public MediumBot(Map enemy) : base(enemy)
+                {
+                    type = "средний";
+                    present();
+                }
+
+                public override void shoot()
+                {
+                    //Этот цикл для выстрелов компьютера
+                    while (true)
+                    {
+                        //Если бот попал по кораблю, он будет стрелять по соседним клеткам,
+                        //чтобы его добить
+                        Console.WriteLine(step + "-ый ход компьютера");
+                        if ((action || forShoot.Count < 4) && x != -1)
+                        {
+                            if (forShoot.Count < 4)
+                            {
+                                forShoot.AddRange(new int[] { 1, 2, 3, 4 });
+                                shuffle(forShoot);
+                            }
+                            if (forShoot[0] == 1)
+                            {
+                                if (!enemy.checkShip(x + 1, y))
+                                {
+                                    action = bot.annihilation(enemy, x + 1, y);
+                                    if (!action)
+                                        forShoot.Remove(forShoot[0]);
+                                    else
+                                        x += 1;
+                                }
+                                else
+                                    forShoot.Remove(forShoot[0]);
+
+                            }
+                            if (forShoot[0] == 2)
+                            {
+                                if (!enemy.checkShip(x - 1, y))
+                                {
+                                    action = bot.annihilation(enemy, x - 1, y);
+                                    if (!action)
+                                        forShoot.Remove(forShoot[0]);
+                                    else
+                                        x -= 1;
+                                }
+                                else
+                                    forShoot.Remove(forShoot[0]);
+
+                            }
+                            if (forShoot[0] == 3)
+                            {
+                                if (!enemy.checkShip(x, y + 1))
+                                {
+                                    action = bot.annihilation(enemy, x, y + 1);
+                                    if (!action)
+                                        forShoot.Remove(forShoot[0]);
+                                    else
+                                        y += 1;
+                                }
+                                else
+                                    forShoot.Remove(forShoot[0]);
+
+                            }
+                            if (forShoot[0] == 4)
+                            {
+                                if (!enemy.checkShip(x, y - 1))
+                                {
+                                    action = bot.annihilation(enemy, x, y - 1);
+                                    if (!action)
+                                        forShoot.Remove(forShoot[0]);
+                                    else
+                                        y -= 1;
+                                }
+                                else
+                                    forShoot.Remove(forShoot[0]);
+
+                            }
+                        }
+                        else
+                        {
+                            forShoot.Clear();
+                            x = r.Next(9) + 1;
+                            y = r.Next(9) + 1;
+                            action = bot.annihilation(enemy, x, y);
+                        }
+
+                        if (action == false)
+                            break;
+                        step++;
+                    }
+                }
+
+                //Переопределение виртуального метода с добавлением ещё одной строчки
+                public override void present()
+                {
+                    base.present();
+                    Console.WriteLine("Но придется постараться ;)" + "\n");
+                }
+
+                //Обязательная реализация члена интерфейса IShuffle
+                public void shuffle(List<int> x)
+                {
+                    Random r = new Random();
+                    for (int i = x.Count - 1; i > 0; i--)
+                    {
+                        int j = r.Next(i + 1);
+                        int t = x[i];
+                        x[i] = x[j];
+                        x[j] = t;
+                    }
+                }
+            }
+
             public void createMap()
             {
                 my.InitializeMap();
-                generateEnemy();
                 Console.WriteLine("Если вы хотите сами установить корабли, введите: YES");
                 Console.WriteLine("Если вы хотите расставить корабли случайно, введите: NO");
                 string s = Console.ReadLine();
@@ -105,26 +294,34 @@ namespace SeaBattle
                     my.setShip(4, Console.ReadLine());
 
                     Console.WriteLine("Спасибо, что установили корабли :)");
-                    battle();
+                    Console.WriteLine("\n" + "Игра началась!" + "\n");
+                    start();
                 }
                 else
                 {
                     my.createRandomMap();
                     my.printMap();
                     Console.WriteLine("Ваши корабли расставлены случайным образом");
-                    battle();
+                    start();
                 }
             }
 
-            public void generateEnemy()
+            public void start()
             {
-                enemy.InitializeMap();
-                enemy.InitializeClone();
-                my.InitializeClone();             
-                enemy.createRandomMap();
+                Console.WriteLine("Выбирете желаемую сложность: 1, 2");
+                string dif = Console.ReadLine();
+                if (dif.Equals("1"))
+                    battle(new EasyBot(my, "легкий"));
+                else if (dif.Equals("2"))
+                    battle(new MediumBot(my));
+                else
+                {
+                    Console.WriteLine("Такой сложности не существует :(");
+                    Console.WriteLine("Попробуйте ещё раз:");
+                    start();
+                }
             }
-
-            public void battle()
+            public void battle(Bot enemy)
             {
                 try
                 {
@@ -141,7 +338,7 @@ namespace SeaBattle
                             if (s.Equals("print"))
                                 my.printMap();
                             else if (s.Equals("printe"))
-                                enemy.clone.printMap();
+                                enemy.bot.clone.printMap();
                             else if (s.Equals("end"))
                             {
                                 end = true;
@@ -154,32 +351,25 @@ namespace SeaBattle
                                 List<int> coordinate = my.convert(s);
                                 int x = coordinate[0];
                                 int y = coordinate[1];
-                                if (!my.annihilation(enemy, x, y))
+                                if (!my.annihilation(enemy.bot, x, y))
                                 {
-                                    enemy.clone.printMap();
+                                    enemy.bot.clone.printMap();
                                     break;
                                 }
                                 Console.WriteLine("\n" + "Вы подбили корабль!" + "\n");
-                                enemy.clone.printMap();
-                            }                       
+                                enemy.bot.clone.printMap();
+                            }
                         }
 
                         if (end)
                             break;
 
                         Console.WriteLine("\n" + "Вы промахнулись" + "\n");
-                        int step = 1;
+
                         //Этот цикл для выстрелов компьютера
-                        while (true)
-                        {                      
-                            Console.WriteLine(step + "-ый ход противника");
-                            Random r = new Random();
-                            int x = r.Next(9)+1;
-                            int y = r.Next(9)+1;
-                            if (enemy.annihilation(my, x, y) == false)
-                                break;
-                            step++;
-                        }
+                        //!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+                        enemy.shoot();
 
                         Console.WriteLine("\n" + "Ваше поле после атак противника: " + "\n");
                         my.printMap();
@@ -189,7 +379,7 @@ namespace SeaBattle
                             Console.WriteLine("Вы проиграли :(");
                             end = !end;
                         }
-                        if (enemy.checkMap(enemy))
+                        if (enemy.bot.checkMap(enemy.bot))
                         {
                             Console.WriteLine("Вы победили :)");
                             end = !end;
@@ -200,7 +390,7 @@ namespace SeaBattle
                 {
                     Console.WriteLine("Вы ввели координаты не по правилам :( " + "\n"
                         + "Попробуйте ещё раз" + "\n");
-                    this.battle();
+                    this.battle(enemy);
                 }
             }
 
@@ -236,9 +426,9 @@ namespace SeaBattle
 
         public void InitializeMap()
         {
-            for(int i = 0; i< plusSize; i++)
+            for (int i = 0; i < plusSize; i++)
             {
-                for (int j = 0; j< plusSize; j++)
+                for (int j = 0; j < plusSize; j++)
                 {
                     map[i, j] = 0;
                 }
@@ -268,7 +458,7 @@ namespace SeaBattle
             result.Add(x);
             result.Add(y);
             if (space == -1)
-                return result;   
+                return result;
             else
             {
                 y = nameMap.IndexOf(s[space + 1]) + 1;
@@ -280,13 +470,13 @@ namespace SeaBattle
                 return result;
             }
         }
-        
+
         //Метод, который проверяет, были ли сбиты все корабли у карты x
         public bool checkMap(Map x)
         {
             int amount = 0;
-            for (int i = 1; i<size; i++)
-                for (int j = 1; j<size; j++)
+            for (int i = 1; i < size; i++)
+                for (int j = 1; j < size; j++)
                 {
                     if (x.map[i, j] == 3)
                         amount++;
@@ -304,17 +494,17 @@ namespace SeaBattle
             try
             {
                 //Проврека, что проверяемое поле пустое
-                if (map[x, y] == 0 && map[x + 1, y] == 0)
+                if (map[x, y] != 1 && map[x + 1, y] != 1)
                 {
                     //Проверка, что соседние поля сверху и справа пустые
-                    if (map[x + 1, y] == 0 && map[x, y + 1] == 0)
+                    if (map[x + 1, y] != 1 && map[x, y + 1] != 1)
                     {
                         //Проверка, что соседние поля слева и снизу пустые
-                        if (map[x - 1, y] == 0 && map[x, y - 1] == 0)
+                        if (map[x - 1, y] != 1 && map[x, y - 1] != 1)
                         {
                             //Проверка, что соседние по диагонали пустые
-                            if (map[x + 1, y + 1] == 0 && map[x + 1, y - 1] == 0 && map[x - 1, y + 1] == 0
-                                && map[x - 1, y - 1] == 0)
+                            if (map[x + 1, y + 1] != 1 && map[x + 1, y - 1] != 1 && map[x - 1, y + 1] != 1
+                                && map[x - 1, y - 1] != 1)
                                 return true;
                         }
                     }
@@ -354,11 +544,11 @@ namespace SeaBattle
                 }
             }
 
-            return false;          
-           
+            return false;
+
         }
 
-        //Метод, который устанавливает однопалубный корабль на поле
+        //Метод, который устанавливает корабль на поле
         public void setShip(int decks, string s)
         {
             try
@@ -414,6 +604,13 @@ namespace SeaBattle
             {
                 victim.map[x, y] = 3;
                 victim.clone.map[x, y] = 3;
+                //Уведомление о "сбитом" или "подбитом" корабле
+                if (victim.checkShip(x, y))
+                {
+                    Console.WriteLine("Корабль сбит!");
+                }
+                else
+                    Console.WriteLine("Корабль подбит!");
                 return true;
             }
             else if (victim.map[x, y] == 3 || victim.map[x, y] == 2)
@@ -428,15 +625,15 @@ namespace SeaBattle
             }
             else
                 throw new Exception();
-                
+
         }
 
         //Метод, который рисует в консоли карту
         public void printMap()
         {
-            for (int i = 0; i < plusSize-1; i++)
+            for (int i = 0; i < plusSize - 1; i++)
             {
-                for (int j = 0; j < plusSize-1; j++)
+                for (int j = 0; j < plusSize - 1; j++)
                 {
                     //В самом вверху прописываем буквы, чтобы
                     //было удобно ориентироваться на поле
@@ -500,14 +697,14 @@ namespace SeaBattle
                     //Console.WriteLine("x: " + x + " y: " + y);
                     if (checkShip(x, y))
                     {
-                        return new Pair(x,y);
+                        return new Pair(x, y);
                     }
 
                 } while (true);
             }
 
             void setRandomShip(int shiplen)
-            {            
+            {
                 shiplen -= 1;
                 bool b;
                 //Здесь мы берем случайную свободную координату методом ones();
@@ -525,7 +722,7 @@ namespace SeaBattle
                         if (j == 0)
                         {
                             if (checkShip(coordinate.x + shiplen, coordinate.y))
-                            {         
+                            {
                                 for (int i = coordinate.x; i < coordinate.x + shiplen + 1; i++)
                                 {
                                     map[i, coordinate.y] = 1;
@@ -585,30 +782,30 @@ namespace SeaBattle
 
                     //Следующий блок запускает проверки в случайном порядке
                     b = false;
-                    for (int i = 0; i<20; i++)
+                    for (int i = 0; i < 20; i++)
                     {
                         b = ifwhat(r.Next(4));
                         if (b) break;
-                    }                
+                    }
                     //Console.WriteLine("ww");
                 } while (b == false);
             }
 
             //Этот цикл расставляет однопалубные корабли
-            for (int i = 0; i<4; i++)
+            for (int i = 0; i < 4; i++)
             {
                 Pair coordinate = ones();
                 map[coordinate.x, coordinate.y] = 1;
             }
 
             //Этот цикл расставляет двупалубные корабли
-            for (int i = 0; i<3; i++)
-            {               
-                setRandomShip(2);              
+            for (int i = 0; i < 3; i++)
+            {
+                setRandomShip(2);
             }
 
             //Этот цикл расставляет трехпалубные
-            for (int i = 0; i<2; i++)
+            for (int i = 0; i < 2; i++)
             {
                 setRandomShip(3);
             }
@@ -617,7 +814,7 @@ namespace SeaBattle
             setRandomShip(4);
 
         }
-        
+
     }
 
 }
